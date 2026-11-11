@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>USTP Make-up Class System</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f5f6fa;--card:#fff;--tx:#1b2233;--mut:#667089;--bd:#dfe3ee;--pri:#1a3a8f;--pri-tx:#fff;--ok:#1e8a4c;--warn:#b7791f;--bad:#c0392b;--chip:#eaeefb}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10131c;--card:#192030;--tx:#e8ebf5;--mut:#9aa4bd;--bd:#2a3350;--pri:#6c8cff;--pri-tx:#0b1020;--ok:#4cc380;--warn:#e0a94a;--bad:#ef7566;--chip:#222c47;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10131c;--card:#192030;--tx:#e8ebf5;--mut:#9aa4bd;--bd:#2a3350;--pri:#6c8cff;--pri-tx:#0b1020;--ok:#4cc380;--warn:#e0a94a;--bad:#ef7566;--chip:#222c47;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0}.sub{color:var(--mut);font-size:13px}
+.tabs{display:flex;gap:6px;margin:14px 0;flex-wrap:wrap}
+.tabs button{flex:1;min-width:110px;padding:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font-weight:600;cursor:pointer}
+.tabs button.on{background:var(--pri);color:var(--pri-tx);border-color:var(--pri)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px;text-align:center}
+.stat b{display:block;font-size:22px}.stat span{font-size:12px;color:var(--mut)}
+label{display:block;font-size:12px;color:var(--mut);margin:8px 0 3px;font-weight:600}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}@media(max-width:560px){.grid{grid-template-columns:1fr}}
+.btn{padding:9px 14px;border-radius:8px;border:0;background:var(--pri);color:var(--pri-tx);font-weight:600;cursor:pointer;margin:8px 6px 0 0}
+.btn.ok{background:var(--ok);color:#fff}.btn.bad{background:var(--bad);color:#fff}.btn.ghost{background:var(--chip);color:var(--tx)}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.badge{font-size:12px;padding:3px 9px;border-radius:99px;font-weight:700;background:var(--chip)}
+.s-submitted{color:var(--warn)}.s-recommended{color:var(--pri)}.s-approved{color:var(--ok)}.s-rejected{color:var(--bad)}.s-conducted{color:var(--ok)}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:2px 14px;font-size:13px;margin:8px 0;color:var(--mut)}.meta b{color:var(--tx)}
+.steps{display:flex;gap:4px;margin:10px 0 4px}.steps i{flex:1;height:5px;border-radius:3px;background:var(--bd)}.steps i.d{background:var(--ok)}.steps i.x{background:var(--bad)}
+.note{font-size:13px;background:var(--chip);border-radius:8px;padding:8px;margin-top:8px}
+.empty{text-align:center;color:var(--mut);padding:24px}
+#warn{display:none;font-size:12px;color:var(--warn);margin-top:6px}
+</style></head><body><div class="wrap">
+<div class="row"><div><h1>📅 Make-up Class System</h1><div class="sub">DPM-USTP-ACAD-003 · Approval and Implementation of Make-up Class</div></div><div id="who"></div></div>
+<div id="main"></div></div>
+<script>
+const FLOW=["submitted","recommended","endorsed","approved","conducted"];
+const LABEL={submitted:"Awaiting Dept Head",recommended:"Awaiting In-charge",endorsed:"Awaiting Dean",approved:"Approved",rejected:"Rejected / Returned",conducted:"Conducted"};
+const RN={faculty:"Faculty",head:"Dept Head / Unit Coordinator",incharge:"In-charge",dean:"Dean / Campus Director",admin:"Admin"};
+const QUEUE={head:"submitted",incharge:"recommended",dean:"endorsed"};
+let cfg={campuses:[],colleges:[]},notes=[],token=localStorage.getItem("mk_token"),user=null,view="faculty",items=[],users=[],fc="",fd="";
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=d=>d?new Date(d).toLocaleString([],{dateStyle:"medium",timeStyle:"short"}):"";
+async function api(path,method="GET",body){
+  const r=await fetch("/api/"+path,{method,headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({}));
+  if(r.status===401&&path!=="login"){logout();throw 0}
+  if(!r.ok){alert(j.error||"Error");throw 0}return j;
+}
+function logout(){localStorage.removeItem("mk_token");token=null;user=null;render()}
+async function boot(){try{cfg=await(await fetch("/api/config")).json()}catch(e){}if(token){try{user=await api("me");view=tabs()[0];await load()}catch(e){}}render()}
+async function load(){notes=await api("notifications");items=await api("requests"+(view==="faculty"?"?mine=1":""));if(view==="users")users=await api("users");render()}
+function tabs(){const t=["faculty"];if(user.role==="admin")t.push("head","incharge","dean","users");else if(QUEUE[user.role])t.push(user.role);
+  return user.role==="faculty"||user.role==="admin"?t:[user.role,"faculty"]}
+async function setView(v){view=v;await load()}
+async function login(){
+  try{const r=await api("login","POST",{username:$("#lu").value.trim(),password:$("#lp").value});
+  token=r.token;localStorage.setItem("mk_token",token);user=r.user;view=tabs()[0];await load()}catch(e){}
+}
+const uniq=k=>[...new Set(items.map(i=>i[k]).filter(Boolean))].sort();
+const pass=i=>(!fc||i.campus===fc)&&(!fd||i.dept===fd);
+function render(){
+  if(!user){$("#who").innerHTML="";$("#main").innerHTML=`<div class="card" style="max-width:340px;margin:40px auto"><b>Log in</b>
+   <label>Username</label><input id="lu"><label>Password</label><input id="lp" type="password" onkeydown="if(event.key==='Enter')login()">
+   <button class="btn" onclick="login()">Log in</button><div class="sub" style="margin-top:8px">Demo: faculty1 / head1 / incharge1 / dean1 (pass123), admin (admin123)</div></div>`;return}
+  $("#who").innerHTML=`<span class="sub">${esc(user.name)} · ${RN[user.role]}</span> <button class="btn ghost" style="margin:0 0 0 6px" onclick="logout()">Log out</button>`;
+  const tb=`<div class="tabs">${tabs().map(k=>`<button class="${view===k?"on":""}" onclick="setView('${k}')">${k==="users"?"⚙ Manage users":RN[k]}</button>`).join("")}</div>`;
+  const c=s=>items.filter(i=>i.status===s).length;
+  const st=view==="users"?"":`<div class="stats">${[["submitted","Dept Head"],["recommended","In-charge"],["endorsed","Dean"],["approved","Approved"],["conducted","Conducted"],["rejected","Returned"]].map(([k,l])=>`<div class="stat"><b>${c(k)}</b><span>${l}</span></div>`).join("")}</div>`;
+  $("#main").innerHTML='<div id="notes"></div>'+tb+st+(view==="faculty"?facultyView():view==="users"?usersView():queueView());drawNotes();
+}
+const campusSel=(id,v,all,x="")=>`<select id="${id}" ${x}><option value="">${all?"All campuses":"Select campus"}</option>${cfg.campuses.map(c=>`<option ${c===v||(!all&&cfg.campuses.length===1)?"selected":""}>${esc(c)}</option>`).join("")}</select>`;
+const deptSel=(id,v,all,x="")=>`<select id="${id}" ${x}><option value="">${all?"All departments":"Select department"}</option>${cfg.colleges.map(c=>`<optgroup label="${esc(c.code===c.name?c.name:c.code+" – "+c.name)}">${c.departments.map(d=>{const val=c.code+" - "+d;return `<option value="${esc(val)}" ${val===v?"selected":""}>${esc(d)}</option>`}).join("")}</optgroup>`).join("")}</select>`;
+function filters(){
+  return `<div class="card grid"><div><label>Campus</label>${campusSel("fc_s",fc,true,'onchange="fc=this.value;render()"')}</div><div><label>Department</label>${deptSel("fd_s",fd,true,'onchange="fd=this.value;render()"')}</div></div>`}
+function facultyView(){
+  return `<div class="card"><b>Step 1–2 · Apply for make-up class</b><div class="sub">Form FM-USTP-ACAD-04. Confirm student availability before submitting.</div><div class="grid">
+   <div><label>Faculty name</label><input id="f_faculty" value="${esc(user.name)}"></div><div><label>Subject</label><input id="f_subject"></div>
+   <div><label>Campus</label>${campusSel("f_campus",user.campus,false)}</div><div><label>Department</label>${deptSel("f_dept",user.dept,false)}</div>
+   <div><label>Program &amp; year level</label><input id="f_program" placeholder="e.g. BSIT 3"></div><div><label>Regular class schedule</label><input id="f_regular" placeholder="e.g. MWF 8:00–9:00"></div>
+   <div><label>Proposed date &amp; time</label><input id="f_when" type="datetime-local"></div><div><label>Proposed classroom</label><input id="f_room"></div></div>
+   <label>Reason for missing a class</label><select id="f_reason"><option>Holiday</option><option>Leave of absence</option><option>Official business</option><option>Other valid reason</option></select>
+   <label>Details (optional)</label><textarea id="f_details" rows="2"></textarea>
+   <label>Proof that students agreed (photo of signed list, chat screenshot, or PDF — up to 5 files, 3 MB each)</label><input id="f_proof" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple>
+   <label><input type="checkbox" id="f_avail" style="width:auto"> I confirmed the availability of students</label>
+   <button class="btn" onclick="submitForm()">Sign &amp; submit to Dept Head</button></div>
+   <h3>My requests</h3>${items.length?items.map(card).join(""):'<div class="empty">No requests yet.</div>'}`;
+}
+function queueView(){const sc=items.filter(pass),q=sc.filter(i=>i.status===QUEUE[view]),rest=sc.filter(i=>i.status!==QUEUE[view]);
+  return `${filters()}<h3>Needs your action (${q.length})</h3>${q.length?q.map(card).join(""):'<div class="empty">Nothing waiting for you.</div>'}<h3>Other requests</h3>${rest.length?rest.map(card).join(""):'<div class="empty">None.</div>'}`}
+function usersView(){
+  return `<div class="card"><b>Add user</b><div class="grid"><div><label>Name</label><input id="n_name"></div><div><label>Username</label><input id="n_username"></div>
+   <div><label>Password</label><input id="n_password" type="password"></div><div><label>Role</label><select id="n_role">${Object.entries(RN).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></div>
+   <div><label>Campus</label>${campusSel("n_campus","",true)}</div><div><label>Department</label>${deptSel("n_dept","",true)}</div></div><button class="btn" onclick="addUser()">Add</button></div>
+   <div class="card"><b>Users</b>${users.map(u=>`<div class="row" style="padding:6px 0;border-top:1px solid var(--bd)"><span><b>${esc(u.name)}</b> (${esc(u.username)}) · ${RN[u.role]} <span class="sub">${esc(u.campus||"all")} / ${esc(u.dept||"all")}</span></span><button class="btn bad" style="margin:0" onclick="delUser('${u.id}')">Delete</button></div>`).join("")}</div>`}
+function card(r){
+  const idx=FLOW.indexOf(r.status),rej=r.status==="rejected";
+  const bar=FLOW.map((_,i)=>`<i class="${rej&&i===(r.rejectedAt??0)?"x":i<=idx?"d":""}"></i>`).join("");
+  let act="";const step=(to,ok,bad)=>`<div><label>Remarks</label><input id="rm_${r.id}"><button class="btn ok" onclick="act('${r.id}','${to}')">${ok}</button><button class="btn bad" onclick="act('${r.id}','reject')">${bad}</button></div>`;
+  if(view==="head"&&r.status==="submitted")act=step("recommend","Recommend approval","Return");
+  if(view==="incharge"&&r.status==="recommended")act=step("endorse","Endorse to Dean","Return");
+  if(view==="dean"&&r.status==="endorsed")act=step("approve","Approve","Reject");
+  if(view==="faculty"&&r.status==="approved")act=`<div class="note">✅ Approved — inform your students, then conduct the class on schedule.</div><label>Upload evidence: attendance sheet (FM-USTP-ACAD-06), USTeP time log, or screenshot — photo or PDF, up to 5 files, 3 MB each</label><input id="ev_${r.id}" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple><button class="btn ok" onclick="conduct('${r.id}')">Mark as conducted</button>`;
+  if((view==="dean"||user.role==="admin")&&r.status==="approved")act=`<div><label>Message (optional)</label><input id="rm_${r.id}"><button class="btn ghost" onclick="act('${r.id}','informed')">${r.informed?"Notify faculty again 🔔":"Notify faculty 🔔"}</button></div>`;
+  const h=(r.history||[]).map(x=>`<div>• ${fmt(x.at)} — ${esc(x.text)}</div>`).join("");
+  return `<div class="card"><div class="row"><div><b>${esc(r.subject)}</b> <span class="sub">· ${esc(r.program)}</span></div><span class="badge s-${r.status}">${LABEL[r.status]}</span></div><div class="steps">${bar}</div>
+   <div class="meta"><span>Faculty: <b>${esc(r.faculty)}</b></span><span>Campus/Dept: <b>${esc(r.campus)} / ${esc(r.dept)}</b></span><span>Regular: <b>${esc(r.regular)}</b></span><span>Make-up: <b>${fmt(r.when)}</b></span><span>Room: <b>${esc(r.room)}</b></span><span>Reason: <b>${esc(r.reason)}</b></span>${r.informed?"<span>Faculty informed: <b>Yes</b></span>":""}</div>
+   ${r.details?`<div class="sub">${esc(r.details)}</div>`:""}${proofs(r)}${evFiles(r)}${r.evidence&&!(r.evidenceFiles&&r.evidenceFiles.length)?`<div class="note">Evidence: ${esc(r.evidence)}</div>`:""}${act}${h?`<details style="margin-top:8px"><summary class="sub">History</summary><div class="sub">${h}</div></details>`:""}</div>`;
+}
+async function submitForm(){
+  const b={};["faculty","subject","campus","dept","program","regular","when","room","reason","details"].forEach(k=>b[k]=$("#f_"+k).value.trim());b.available=$("#f_avail").checked;
+  const fs=[...$("#f_proof").files];
+  if(!fs.length)return alert("Attach proof that the students agreed (photo or PDF).");
+  if(fs.length>5)return alert("Maximum 5 files.");
+  if(fs.some(f=>f.size>3*1024*1024))return alert("Each file must be 3 MB or smaller.");
+  try{b.proofs=await Promise.all(fs.map(readFile));await api("requests","POST",b);await load()}catch(e){}
+}
+async function act(id,a){try{await api(`requests/${id}/${a}`,"POST",{remarks:($("#rm_"+id)||{}).value});await load()}catch(e){}}
+async function conduct(id){const fs=[...$("#ev_"+id).files];
+  if(!fs.length)return alert("Upload at least one evidence file (photo or PDF).");
+  if(fs.length>5)return alert("Maximum 5 files.");
+  if(fs.some(f=>f.size>3*1024*1024))return alert("Each file must be 3 MB or smaller.");
+  try{await api(`requests/${id}/conduct`,"POST",{files:await Promise.all(fs.map(readFile))});await load()}catch(e){}}
+async function addUser(){const b={};["name","username","password","role","campus","dept"].forEach(k=>b[k]=$("#n_"+k).value.trim());try{await api("users","POST",b);await load()}catch(e){}}
+async function delUser(id){if(confirm("Delete this user?"))try{await api("users/"+id,"DELETE");await load()}catch(e){}}
+function readFile(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok({name:f.name,mime:f.type,data:r.result.split(",")[1]});r.onerror=no;r.readAsDataURL(f)})}
+async function viewFile(id){try{const r=await fetch("/api/files/"+id,{headers:{Authorization:"Bearer "+token}});if(!r.ok)throw 0;window.open(URL.createObjectURL(await r.blob()),"_blank")}catch(e){alert("Could not open file")}}
+const evFiles=r=>(r.evidenceFiles&&r.evidenceFiles.length)?`<div class="note">✅ Evidence of conducted class: ${r.evidenceFiles.map(p=>`<a href="#" onclick="viewFile('${p.file}');return false">${esc(p.name)}</a>`).join(" · ")}</div>`:"";
+const proofs=r=>(r.proofs&&r.proofs.length)?`<div class="note">📎 Proof of student agreement: ${r.proofs.map(p=>`<a href="#" onclick="viewFile('${p.file}');return false">${esc(p.name)}</a>`).join(" · ")}</div>`:"";
+function drawNotes(){const el=$("#notes");if(!el)return;const n=notes.filter(x=>!x.read);
+  el.innerHTML=n.length?`<div class="card" style="border-color:var(--ok)"><div class="row"><b>🔔 Notifications (${n.length})</b><button class="btn ghost" style="margin:0" onclick="markRead()">Mark all read</button></div>${n.map(x=>`<div class="note">${esc(x.text)} <span class="sub">${fmt(x.created)}</span></div>`).join("")}</div>`:""}
+async function markRead(){try{await api("notifications/read","POST");notes=await api("notifications");drawNotes()}catch(e){}}
+setInterval(async()=>{if(user){try{notes=await api("notifications");drawNotes()}catch(e){}}},20000);
+boot();
+</script></body></html>
